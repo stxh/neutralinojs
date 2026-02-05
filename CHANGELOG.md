@@ -6,19 +6,226 @@ rename `Unreleased` topic with the new version tag. Finally, create a new `Unrel
 
 ## Unreleased
 
-## v5.5.6
+## v6.5.0
 
-### Add function
-- Implement the `server.setVDocRoot(path)` function to set virtual document root to path.
+### Core: events
+- New window events: `windowMinimize`, `windowRestore`, `windowMaximize`, `windowFullScreenEnter`, and `windowFullScreenExit`
+
+### API: window
+- Add `window.setBorderless(bool)` to toggle borderless mode while the Neutralinojs app is running.
+
+### Configuration
+- Add `modes.chrome.browserBinary` option to set custom browser binary path under the chrome mode. If this field is specified, the framework will try to launch Chrome from there. If it fails, the framework will initiate the Chrome binary search as usual:
+```js
+// cross-platform
+"browserBinary": "/path/to/chrome/bin"
+
+// platform-specific path
+"browserBinaryLinux": "/usr/bin/google-chrome",
+"browserBinaryDarwin": "/Applications/Google Chrome.app",
+"browserBinaryWindows": "C:\\Programs\\Google Chrome\\chrome.exe"
+
+// cross-platform (with path constants)
+"browserBinary": "${NL_OSDATAPATH}/chrome/bin"
+"browserBinaryWindows": "${NL_OSDOWNLOADSPATH}/chrome.exe"
+```
+- Add the `modes.window.useLogicalPixels: true|false` option to activate DPI-aware sizing based on the operating system's display scale factor.
+- Add extra path constants support (early versions only supported `${NL_PATH}`) for the extensions command: `${NL_OSDATAPATH}`, `${NL_OSCACHEPATH}`, ... All supported path constants use this format: `${NL_OS<name>PATH}` where `<name>` is any accepted parameter (uppercased) to the `os.getPath(name)` function:
+```js
+"commandLinux": "${NL_OSDOWNLOADSPATH}/extensionBinary --load"
+``` 
+
+### Improvements/bugfixes
+- Fix issues with filter extension handling of the file dialogs API on Linux
+- Fix tray icon disappearing issue on Windows
+
+## v6.4.0
+
+### API: storage
+- Implement `storage.clear()` and `storage.removeData(key)` functions to remove saved storage data.
+
+### Improvements/bugfixes
+- Fix the draggable region not working issue on Windows.
+- Replace deprecated macOS API with suitable modern APIs in the codebase.
+- Static file server enhancements.
+- Improve `window.getPositon()` in macOS.
+- Save the correct window size and position when a maximized/minimized window is being closed on Windows.
+- Fix the window disappearing issue while restoring the window on Windows
+
+## v6.3.0
+
+### Single-executable mode
+Earlier, the Neutralinojs framework normally loaded resources either from the resources directory or the `resources.neu` file, and didn't offer a proper way to use embedded resource files in the app binary to allow developers to create single-executable apps. Now, the framework loads resources from the binary itself on all platforms if the app was built using the `neu build --embed-resources` CLI flag. This feature deprecates the `--load-dir-res` option and introduces the new `--res-mode=<mode>` option to choose the preferred resource loading mode from `embedded` (default), `bundle`, or `directory`. 
+
+The Neutralinojs single-executable feature internally uses the [`postject` library](https://github.com/nodejs/postject) to embed the `resources.neu` file into platform-specific binaries via the neu CLI and the `postject` library C header file to read the embedded resources during application runtime.
+
+### Configuration
+- Support the `window.skipTaskbar` boolean option to hide the application icon from the operating system taskbar/dock. This option can also be passed from the command line via the `--window-skip-taskbar=<true|false>` option.
+- Implement the `window.openInspectorOnStartup` boolean option to configure auto-opening the inspector window. This feature is also available via the `--window-open-inspector-on-startup=<true|false>` command-line flag.
+
+### Improvements/bugfixes
+- Fix WebView2 crash when Windows usernames or executable paths contain Unicode characters (e.g., äüö, Chinese characters). Replaced ANSI Windows APIs with Unicode equivalents and added proper null pointer checking for environment variable access.
+- Include details about missing parameter names in the error object of `NE_RT_NATRTER`.
+
+## v6.2.0
+
+### API: window
+- Add `Neutralino.window.print()` to display the native print dialog on all platforms. This was especially added since the macOS webview doesn't implement the `window.print()` function.
+- Introduce the `window.beginDrag()` function to trigger native window dragging. The new draggable region API implementation uses this function internally. 
+
+### API: filesystem
+- Add `filesystem.getJoinedPath(...paths: string[])` to create a single path by joining multiple path strings.
+- Add `filesystem.getNormalizedPath()` and `filesystem.getUnnormalizedPath()` functions, which make Windows paths look like Unix paths by replacing `\\` with `/` and revert normalized paths into Windows-specific paths respectively on the Windows platform. On non-Windows platforms, these functions return the same input strings.
+
+### Configuration
+- Implement the `window.webviewArgs` configuration option to pass additional browser arguments to the WebView2 instance on Windows:
+```js
+"modes": {
+  "window": {
+     // ....
+     "webviewArgs": "--user-agent=\"Custom user agent\""
+  }
+}
+```
+
+### Improvements/bugfixes
+- Display GUI error messages for webview initialization failures. i.e., if the WebView2 runtime is not installed on Windows and if the WebKitGTK library is not installed on GNU/Linux platforms.
+
+## v6.1.0
+
+### API: Native window main menu
+The new `window.setMainMenu(menu)` function lets developers create a native window menu on GNU/Linux and Windows and an application menu on macOS. This function can be called multiple times with different menu objects to update menu items dynamically:
+
+```js
+const menu = [
+  {id: 'file', text: 'File',
+    menuItems: [
+    {id: 'open', text: 'Open'},
+    {text: '-'},
+    {id: 'quit', text: 'Quit'},
+  ]},
+  {id: 'edit', text: 'Edit',
+    menuItems: [
+    {id: 'cut', text: 'Cut'},
+    {id: 'copy', text: 'Copy'},
+    {id: 'paste', text: 'Paste'},
+  ]}
+];
+
+await Neutralino.window.setMainMenu(menu);
+```
+The framework will trigger the `mainMenuItemClicked` event with menu item data when the user clicks on a specific menu item.
+
+On macOS, app developers can register key accelerators and pre-defined actions as follows:
+
+```js
+{id: 'edit', text: 'Edit',
+  menuItems: [
+  {id: 'cut', text: 'Cut', action: 'cut:', shortcut: 'x'},
+  {id: 'copy', text: 'Copy', action: 'copy:', shortcut: 'c'},
+  {id: 'paste', text: 'Paste', action: 'paste:', shortcut: 'v'},
+]}
+```
+
+On GNU/Linux and Windows, the framework only displays the keyboard shortcut within the particular menu item and doesn't register a key accelerator yet:
+
+```js
+{id: 'copy', text: 'Copy', shortcut: 'Ctrl + C'}
+```
+
+*Note: We are planning to add key accelerator support for GNU/Linux and Windows native window menus with a global key accelerator feature in an upcoming framework version.* 
+
+### Core: global variables
+- Add `NL_LOCALE` to get the user locale name, e.g., `en_US.UTF-8`
+- Add `NL_COMPDATA` to display custom data strings embedded in the binary via the BuildZri configuration. Developers can use this global variable to set the build number or other static data when they compile their own framework binary with the BuildZri script:
+
+```json
+"definitions": {
+    "*": [
+        "NEU_COMPILATION_DATA=\\\"build_number=${BZ_BUILDNUMBER};compiler_name=${BZ_CONPILERNAME}\\\"",
+```
+
+## v6.0.0
+
+### API: clipboard
+- Implement `clipboard.writeHTML(html)` and `clipboard.readHTML()` functions to write/read HTML strings
+
+### API: os
+- Adding `envs` key-value pair parameter to the `options` of the `os.execCommand(command, options)` function to set specific environment variables for the child process.
+- Change the `os.spawnProcess(command, cwd)` to `os.spawnProcess(command, options)` to set environment variables and the current working directory via the `options` object for the spawned child process:
+```js
+// e.g.:
+await Neutralino.os.spawnCommand('env', {
+  cwd: NL_PATH,
+  envs: {
+    VAR1: 'var1',
+    VAR2: 'var2'
+  }
+});
+```
+
+### API: filesystem
+- Add the `timestamp` (ISO 8601) property to the `watchFile` event's data payload to identify when a specific file watcher event occurred.
+- Implement `filesystem.setPermissions(path, permissions, mode)` and `filesystem.getPermissions(path)` functions to set/get file permissions in a cross-platform way:
+```js
+// e.g.:
+await Neutralino.filesystem.setPermissions(NL_PATH + '/my-directory-1', {ownerRead: true, groupRead: true});
+await Neutralino.filesystem.setPermissions(NL_PATH + '/my-directory-2', {all: true});
+await Neutralino.filesystem.setPermissions(NL_PATH + '/my-directory-3', {otherAll: true}, 'REMOVE');
+
+const permissions = await Neutralino.filesystem.getPermissions(NL_PATH);
+// permissions -> {all:.., ownerRead, ownerWrite...}
+```
+### Core: extensions
+- Extensions are now loaded internally using the `os.spawnProcess()` function without triggering process events. This modification displays extension logs within the Windows terminal and lets app developers control extensions using the existing spawn process API.
+
+### Security
+- Improve the `NL_TOKEN` generation algorithm to strengthen security using the C++ `std::mt19937` random number generator.
+
+### Improvements/bugfixes
+- Fix framework crashing when creating the `.tmp` directory under restricted file manipulation permissions.
+- Fix several issues in the Windows-specific GUI notification implementation of the `os.showNotification()` function.
+- Fix invalid utf8 character handling issues in several native APIs (i.e., `os.spawnProcess('./bin')` crashed if `bin` output `"ä\xA9ü"`)
+
+## v5.6.0
+
+### API: server
+Neutralinojs doesn't support the `file://` protocol to load local resource files due to application security concerns. Because of this limitation, app developers had to read files using filesystem APIs. The new `server` namespace implements `server.mount(path, target)`, `server.unmount(path)`, and `server.getMounts()` functions to let developers load local files from the Neutralinojs static server by creating directory mappings as an alternative for the `file://` protocol.
+
+For example, the following function call configures the Neutralinojs static server to serve resources on the `${NL_PATH}/app-res` directory:
+
+```js
+await Neutralino.server.mount('/app-res', NL_PATH + '/app-res');
+```
+
+With the above server configuration, `NL_PATH + '/app-res/stat.txt'` can be loaded to the webview via the following URL:
+
+```
+http://127.0.0.1/app-res/stat.txt
+```
+
+This local directory mounting configuration can be deactivated as follows:
+
+```js
+await Neutralino.server.unmount('/app-res');
+```
+
+### API: resources
+- Fallback to native filesystem APIs when `NL_RESMODE` is `directory`.
+- Implement `resources.getStats(path)` and `resources.extractDirectory(path, destination)` functions.
+
 
 ### API: window
 - Implement the `window.snapshot(path)` function to capture the window and save it as a PNG image file.
 
 ### Improvements/bugfixes
 - Fix the empty string returning issue with the `window.getTitle()` function on Windows.
+- Create non-existent directories while extracting resource files using the `resources.extractFile()` function.
+- Supports using large `resources.neu` files.
 
 ### DevOps
 - Fix minor string formatting issues in the BuildZri automation script.
+- Fix various test suite failure scenarios.
 
 ## v5.5.0
 

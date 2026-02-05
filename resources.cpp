@@ -3,8 +3,10 @@
 #include <fstream>
 #include <regex>
 #include <vector>
+#include <filesystem>
 #include <limits.h>
 
+#include "lib/postject/postject-api.h"
 #include "lib/easylogging/easylogging++.h"
 #include "lib/json/json.hpp"
 #include "helpers.h"
@@ -15,6 +17,7 @@
 #include "api/fs/fs.h"
 
 #define NEU_APP_RES_FILE "/resources.neu"
+#define RESOURCE_NAME_EMBEDDED "NEUTRALINOJS_RESOURCES_NEU"
 
 using namespace std;
 using json = nlohmann::json;
@@ -23,20 +26,19 @@ namespace resources {
 
 json fileTree = nullptr;
 unsigned int asarHeaderSize;
-resources::ResourceMode mode = resources::ResourceModeBundle;
+resources::ResourceMode mode = resources::ResourceModeEmbedded;
 
-pair<int, string> __seekFilePos(const string &path, json node, const string &curpath) {
+pair<unsigned long, string> __seekFilePos(const string &path, json node) {
     vector<string> pathSegments = helpers::split(path, '/');
-    string filename = pathSegments[pathSegments.size() - 1];
     json json = node;
     for(const auto &pathSegment: pathSegments) {
-        if(pathSegment.length() == 0 || json.is_null() || json["files"].is_null())
+        if(pathSegment.size() == 0 || json.is_null() || json["files"].is_null())
             continue;
         json = json["files"][pathSegment];
     }
     if(!json.is_null())
-        return make_pair<int, string>(json["size"].get<int>(), json["offset"].get<string>());
-    return make_pair<int, string>(-1, "");
+        return make_pair(json["size"].get<unsigned long>(), json["offset"].get<string>());
+    return make_pair(-1, "");
 }
 
 // Needs explicit close later
@@ -53,30 +55,59 @@ ifstream __openResourceFile() {
 
 fs::FileReaderResult __getFileFromBundle(const string &filename) {
     fs::FileReaderResult fileReaderResult;
-    pair<int, string> p = __seekFilePos(filename, fileTree, "");
+    pair<long, string> p = __seekFilePos(filename, fileTree);
     if(p.first != -1) {
         ifstream asarArchive = __openResourceFile();
         if (!asarArchive) {
             fileReaderResult.status = errors::NE_RS_TREEGER;
             return fileReaderResult;
         }
-        unsigned int uSize = p.first;
-        unsigned int uOffset = stoi(p.second);
+        unsigned long size = p.first;
+        unsigned long uOffset = stoi(p.second);
 
-        vector<char>fileBuf ( uSize );
+        vector<char>fileBuf ( size );
         asarArchive.seekg(asarHeaderSize + uOffset);
-        asarArchive.read(fileBuf.data(), uSize);
+        asarArchive.read(fileBuf.data(), size);
         string fileContent(fileBuf.begin(), fileBuf.end());
         fileReaderResult.data = fileContent;
         asarArchive.close();
    }
    else {
-        fileReaderResult.status = errors::NE_RS_FILNOTF;
+        fileReaderResult.status = errors::NE_RS_NOPATHE;
    }
    return fileReaderResult;
 }
 
-bool __makeFileTree() {
+fs::FileReaderResult __getFileFromEmbedded(const string &filename) {
+    fs::FileReaderResult fileReaderResult;
+    pair<long, string> p = __seekFilePos(filename, fileTree);
+    if(p.first != -1) {
+        size_t resource_size = 0;
+        const void* resource_ptr = postject_find_resource(RESOURCE_NAME_EMBEDDED, &resource_size, NULL);
+        if (resource_ptr == NULL || resource_size <= 0) {
+            fileReaderResult.status = errors::NE_RS_TREEGER;
+            return fileReaderResult;
+        }
+
+        const unsigned char* bytes = (const unsigned char*)resource_ptr;
+        unsigned long size = p.first;
+        unsigned long uOffset = stoi(p.second);
+
+        vector<char>fileBuf ( size );
+        for (size_t i = asarHeaderSize + uOffset; i < asarHeaderSize + uOffset + size; i++) {
+          fileBuf[i - (asarHeaderSize + uOffset)] = bytes[i];
+        }
+
+        string fileContent(fileBuf.begin(), fileBuf.end());
+        fileReaderResult.data = fileContent;
+   }
+   else {
+        fileReaderResult.status = errors::NE_RS_NOPATHE;
+   }
+   return fileReaderResult;
+}
+
+bool __makeBundleFileTree() {
     ifstream asarArchive = __openResourceFile();
     if (!asarArchive) {
         return false;
@@ -84,14 +115,14 @@ bool __makeFileTree() {
 
     char *sizeBuf = new char[8];
     asarArchive.read(sizeBuf, 8);
-    unsigned int uSize = *(unsigned int *)(sizeBuf + 4) - 8;
+    unsigned int size = *(unsigned int *)(sizeBuf + 4) - 8;
 
     delete[] sizeBuf;
 
-    asarHeaderSize = uSize + 16;
-    vector<char> headerBuf(uSize);
+    asarHeaderSize = size + 16;
+    vector<char> headerBuf(size);
     asarArchive.seekg(16);
-    asarArchive.read(headerBuf.data(), uSize);
+    asarArchive.read(headerBuf.data(), size);
     json files;
     string headerContent(headerBuf.begin(), headerBuf.end());
     asarArchive.close();
@@ -105,11 +136,50 @@ bool __makeFileTree() {
     return fileTree != nullptr;
 }
 
+bool __makeEmbeddedFileTree() {
+    size_t resource_size = 0;
+    const void* resource_ptr = postject_find_resource(RESOURCE_NAME_EMBEDDED, &resource_size, NULL);
+    if (resource_ptr == NULL || resource_size <= 0) {
+      return false;
+    }
+
+    const unsigned char* bytes = (const unsigned char*)resource_ptr;
+    char *sizeBuf = new char[8];
+    for (size_t i = 0; i < 8; ++i) {
+      sizeBuf[i] = bytes[i];
+    }
+
+    unsigned int size = *(unsigned int *)(sizeBuf + 4) - 8;
+    delete[] sizeBuf;
+
+    asarHeaderSize = size + 16;
+    vector<char> headerBuf(size);
+    for (size_t i = 16; i < 16 + size; ++i) {
+      headerBuf[i - 16] = bytes[i];
+    }
+
+    json files;
+    string headerContent(headerBuf.begin(), headerBuf.end());
+    try {
+        files = json::parse(headerContent);
+    }
+    catch(exception e) {
+        debug::log(debug::LogTypeError, e.what());
+    }
+    fileTree = files;
+    return fileTree != nullptr;
+}
+
 bool extractFile(const string &filename, const string &outputFilename) {
     fs::FileReaderResult fileReaderResult = resources::getFile(filename);
     if(fileReaderResult.status != errors::NE_ST_OK) {
-      return false;
+        return false;
     }
+    auto extractPath = filesystem::path(CONVSTR(outputFilename));
+    if(!extractPath.parent_path().empty()) {
+        filesystem::create_directories(extractPath.parent_path());
+    }
+   
     fs::FileWriterOptions fileWriterOptions;
     fileWriterOptions.filename = outputFilename;
     fileWriterOptions.data = fileReaderResult.data;
@@ -117,6 +187,9 @@ bool extractFile(const string &filename, const string &outputFilename) {
 }
 
 fs::FileReaderResult getFile(const string &filename) {
+    if (resources::isEmbeddedMode()) {
+        return __getFileFromEmbedded(filename);
+    }
     if(resources::isBundleMode()) {
         return __getFileFromBundle(filename);
     }
@@ -127,7 +200,13 @@ void init() {
     if(resources::isDirMode()) {
         return;
     }
-    bool resourceLoaderStatus = __makeFileTree();
+    if (resources::isEmbeddedMode()) {
+        if (postject_has_resource() && __makeEmbeddedFileTree()) {
+            return;
+        }
+        resources::setMode(resources::ResourceModeBundle); // Try bundle mode
+    }
+    bool resourceLoaderStatus = __makeBundleFileTree();
     if(!resourceLoaderStatus) {
         resources::setMode(resources::ResourceModeDir); // fallback to directory mode
     }
@@ -149,12 +228,18 @@ bool isBundleMode() {
    return resources::getMode() == resources::ResourceModeBundle;
 }
 
+bool isEmbeddedMode() {
+   return resources::getMode() == resources::ResourceModeEmbedded;
+}
+
 json getFileTree() {
    return fileTree;
 }
 
 string getModeString() {
-    return resources::isDirMode() ? "directory" : "bundle";
+    if (resources::isDirMode()) return "directory";
+    else if (resources::isBundleMode()) return "bundle";
+    else return "embedded";
 }
 
 } // namespace resources

@@ -17,6 +17,7 @@ enum StatusCode {
     NE_ST_INVSTKY,
     NE_ST_NOSTKEX,
     NE_ST_STKEYWE,
+    NE_ST_STKEYRE,
     NE_ST_NOSTDIR,
     // os
     NE_OS_UNLTOUP,
@@ -40,6 +41,7 @@ enum StatusCode {
     NE_FS_UNLTFOP,
     NE_FS_UNLCWAT,
     NE_FS_NOWATID,
+    NE_FS_UNLSTPR,
     // window
     NE_WI_UNBSWSR,
     // router
@@ -51,8 +53,9 @@ enum StatusCode {
     // resources
     NE_RS_TREEGER,
     NE_RS_UNBLDRE,
-    NE_RS_APIRQRF,
-    NE_RS_FILNOTF,
+    NE_RS_NOPATHE,
+    NE_RS_FILEXTF,
+    NE_RS_DIREXTF,
     // server
     NE_SR_UNBSEND,
     NE_SR_UNBPARS,
@@ -65,7 +68,7 @@ enum StatusCode {
     NE_CF_UNBLWCF
 };
 
-json makeMissingArgErrorPayload();
+json makeMissingArgErrorPayload(const string& missingArg);
 json makeErrorPayload(const errors::StatusCode code, const string &param = "");
 string makeErrorMsg(const errors::StatusCode code, const string &param = "");
 

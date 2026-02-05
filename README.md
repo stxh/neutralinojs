@@ -14,8 +14,7 @@
 Neutralinojs is a lightweight and portable desktop application development framework. It lets you develop lightweight cross-platform desktop applications using JavaScript, HTML and CSS. Apps built with Neutralinojs can run on Linux, macOS, Windows, Web, and Chrome. Also, you can extend Neutralinojs with any programming language (via extensions IPC) and use Neutralinojs as a part of any source file (via child processes IPC).
 
 - [Neutralinojs vs. Electron, NW.JS, Tauri, NodeGui, Flutter, .Net MAUI, Wails](https://github.com/Elanis/web-to-desktop-framework-comparison)
-- [Neutralinojs vs. Electron vs. NW.js (2018)](https://github.com/neutralinojs/evaluation)
-- [Roadmap 2024](https://codezri.org/blog/neutralinojs-2024-roadmap/)
+- [Roadmap 2025](https://github.com/neutralinojs/roadmap)
 - [Release notes](https://neutralino.js.org/docs/release-notes/framework)
 
 Get started with the neu CLI:
@@ -44,7 +43,7 @@ Start building apps: [neutralino.js.org/docs](https://neutralino.js.org/docs)
 
 In Electron and NWjs, you have to install NodeJs and hundreds of dependency libraries. Embedded Chromium and Node make simple apps bloaty. Neutralinojs offers a lightweight and portable SDK which is an alternative for Electron and NW.js. Neutralinojs doesn't bundle Chromium and uses the existing web browser library in the operating system (Eg: gtk-webkit2 on Linux). Neutralinojs implements a WebSocket connection for native operations and embeds a static web server to serve the web content. Also, it offers a built-in [JavaScript client library](https://github.com/neutralinojs/neutralino.js) for developers.
 
-Ask questions on StackOverflow using tag [neutralinojs](https://stackoverflow.com/questions/tagged/neutralinojs)
+Ask questions on StackOverflow using the tag [neutralinojs](https://stackoverflow.com/questions/tagged/neutralinojs)
 
 ## Contributing
 
@@ -62,8 +61,8 @@ Image created with [contributors-img](https://contributors-img.firebaseapp.com).
 
 ## Subprojects
 
-- Builds are powered by [BuildZri](https://codezri.org/docs/buildzri/intro)
 - Releases are powered by [ReleaseZri](https://codezri.org/docs/releasezri/intro)
+- Previous binary builds were powered by [BuildZri](https://codezri.org/docs/buildzri/intro) (now the project uses CMake + Ninja)
 
 ## Sponsors and Donators
 
@@ -75,12 +74,12 @@ If you like to support our work, you can donate to Neutralinojs via [Patreon](ht
 
 ## Licenses and Copyrights
 
-- Neutralinojs core: MIT. Copyright (c) 2021 Neutralinojs and contributors.
+- Neutralinojs core: MIT. Copyright (c) 2025 Neutralinojs and contributors.
 - C++ websocket client/server library: BSD-3-Clause from [zaphoyd/websocketpp](https://github.com/zaphoyd/websocketpp). Copyright (c) 2014, Peter Thorson. All rights reserved.
 - JSON parser library: MIT from [nlohmann/json](https://github.com/nlohmann/json). Copyright (c) 2013-2022 Niels Lohmann.
 - Cross-platform webview library: MIT from [webview/webview](https://github.com/webview/webview). Copyright (c) 2017 Serge Zaitsev.
 - Cross-platform tray library: MIT from [zserge/tray](https://github.com/zserge/tray). Copyright (c) 2017 Serge Zaitsev.
-- Cross-platform GUI dialogs library: WTFPL from [samhocevar/portable-file-dialogs](https://github.com/samhocevar/portable-file-dialogs). Copyright (c) 2018—2020 Sam Hocevar
+- Cross-platform GUI dialogs library: WTFPL from [samhocevar/portable-file-dialogs](https://github.com/samhocevar/portable-file-dialogs). Copyright (c) 2018—2022 Sam Hocevar
 - Base64 encoder/decoder library: MIT from [tobiaslocker/base64](https://github.com/tobiaslocker/base64). Copyright (c) 2019 Tobias Locker.
 - Cross-platform known platform directories API: MIT from [sago007/PlatformFolders](https://github.com/sago007/PlatformFolders). Copyright (c) 2015 Poul Sander.
 - C++ logging library: MIT from [amrayn/easyloggingpp](https://github.com/amrayn/easyloggingpp). Copyright (c) 2012-2018 Amrayn Web Services. Copyright (c) 2012-2018 @abumusamq
@@ -89,7 +88,8 @@ If you like to support our work, you can donate to Neutralinojs via [Patreon](ht
 - Cross-platform C++ clipboard library: MIT from [dacap/clip](https://github.com/dacap/clip). Copyright (c) 2015-2021 David Capello
 - Cross-platform C++ system information library: CC0 1.0 Universal from [ThePhD/infoware](https://github.com/ThePhD/infoware). Written in 2016-2020 by nabijaczleweli and ThePhD
 - Cross-platform C++ filesystem watcher library: MIT from [SpartanJ/efsw](https://github.com/SpartanJ/efsw). Copyright (c) 2020 Martín Lucas Golini
-- Logo design credits: [IconsPng](https://www.iconspng.com/image/2688/atom-orange). Copyright free as mentioned in their website.
+- Resource injection/reading library for C++/Node.js: MIT from [nodejs/postject](https://github.com/nodejs/postject). Copyright (c) 2022 Postman, Inc
+- Logo design credits: [IconsPng](https://www.iconspng.com/image/2688/atom-orange). Copyright free as mentioned on their website.
 
 [See the complete license file](LICENSE)
 

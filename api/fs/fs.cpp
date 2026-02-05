@@ -3,6 +3,8 @@
 #include <iostream>
 #include <fstream>
 #include <regex>
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
 
 #if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)
@@ -26,6 +28,7 @@
 #include <efsw/efsw.hpp>
 #include "lib/json/json.hpp"
 #include "lib/base64/base64.hpp"
+#include "lib/platformfolders/platform_folders.h"
 #include "settings.h"
 #include "helpers.h"
 #include "errors.h"
@@ -62,6 +65,7 @@ void __dispatchWatcherEvt(efsw::WatchID watcherId, const std::string& dir,
     evt["id"] = watcherId;
     evt["dir"] = helpers::normalizePath(dirC);
     evt["filename"] = filename;
+    evt["timestamp"] = helpers::getCurrentTimestamp();
     switch (action) {
         case efsw::Actions::Add:
             evt["action"] = "add";
@@ -348,12 +352,27 @@ fs::DirReaderResult readDirectory(const string &path, bool recursive) {
     return dirResult;
 }
 
+string applyPathConstants(const string &path) {
+    string newPath = regex_replace(path, regex("\\$\\{NL_PATH\\}"), settings::getAppPath());
+
+    vector<string> pathNames = {"data", "cache", "documents", 
+                    "pictures", "music", "video", "downloads",
+                    "saveGames1", "saveGames2", "temp"};
+    for(const string &pathName: pathNames) {
+        string varSegment = pathName;
+        transform(varSegment.begin(), varSegment.end(), varSegment.begin(), ::toupper); 
+        newPath = regex_replace(newPath, regex("\\$\\{NL_OS" + varSegment + "PATH\\}"), os::getPath(pathName));
+    }
+    return newPath;
+}
+
 namespace controllers {
 
 json __writeOrAppendFile(const json &input, bool append = false) {
     json output;
-    if(!helpers::hasRequiredFields(input, {"path", "data"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+    const auto missingRequiredField = helpers::missingRequiredField(input, {"path", "data"});
+    if(missingRequiredField) {
+        output["error"] = errors::makeMissingArgErrorPayload(missingRequiredField.value());
         return output;
     }
     fs::FileWriterOptions fileWriterOptions;
@@ -370,8 +389,9 @@ json __writeOrAppendFile(const json &input, bool append = false) {
 
 json __writeOrAppendBinaryFile(const json &input, bool append = false) {
     json output;
-    if(!helpers::hasRequiredFields(input, {"path", "data"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+    const auto missingRequiredField = helpers::missingRequiredField(input, {"path", "data"});
+    if(missingRequiredField) {
+        output["error"] = errors::makeMissingArgErrorPayload(missingRequiredField.value());
         return output;
     }
     fs::FileWriterOptions fileWriterOptions;
@@ -389,7 +409,7 @@ json __writeOrAppendBinaryFile(const json &input, bool append = false) {
 json createDirectory(const json &input) {
     json output;
     if(!helpers::hasRequiredFields(input, {"path"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+        output["error"] = errors::makeMissingArgErrorPayload("path");
         return output;
     }
     string path = input["path"].get<string>();
@@ -407,7 +427,7 @@ json remove(const json& input) {
     json output;
 
     if (!helpers::hasRequiredFields(input, {"path"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+        output["error"] = errors::makeMissingArgErrorPayload("path");
         return output;
     }
 
@@ -427,7 +447,7 @@ json remove(const json& input) {
 json readFile(const json &input) {
     json output;
     if(!helpers::hasRequiredFields(input, {"path"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+        output["error"] = errors::makeMissingArgErrorPayload("path");
         return output;
     }
     fs::FileReaderOptions readerOptions;
@@ -453,7 +473,7 @@ json readFile(const json &input) {
 json readBinaryFile(const json &input) {
     json output;
     if(!helpers::hasRequiredFields(input, {"path"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+        output["error"] = errors::makeMissingArgErrorPayload("path");
         return output;
     }
     fs::FileReaderOptions readerOptions;
@@ -495,7 +515,7 @@ json appendBinaryFile(const json &input) {
 json openFile(const json &input) {
     json output;
     if(!helpers::hasRequiredFields(input, {"path"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+        output["error"] = errors::makeMissingArgErrorPayload("path");
         return output;
     }
     string path = input["path"].get<string>();
@@ -512,8 +532,9 @@ json openFile(const json &input) {
 
 json updateOpenedFile(const json &input) {
     json output;
-    if(!helpers::hasRequiredFields(input, {"id", "event"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+    const auto missingRequiredField = helpers::missingRequiredField(input, {"id", "event"});
+    if(missingRequiredField) {
+        output["error"] = errors::makeMissingArgErrorPayload(missingRequiredField.value());
         return output;
     }
 
@@ -545,7 +566,7 @@ json getOpenedFileInfo(const json &input) {
     lock_guard<mutex> guard(openedFilesLock);
 
     if(!helpers::hasRequiredFields(input, {"id"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+        output["error"] = errors::makeMissingArgErrorPayload("id");
         return output;
     }
     int fileId = input["id"].get<int>();
@@ -572,7 +593,7 @@ json readDirectory(const json &input) {
     json output;
     output["returnValue"] = json::array();
     if(!helpers::hasRequiredFields(input, {"path"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+        output["error"] = errors::makeMissingArgErrorPayload("path");
         return output;
     }
     string path = input["path"].get<string>();
@@ -610,8 +631,9 @@ json readDirectory(const json &input) {
 
 json copy(const json &input) {
     json output;
-    if(!helpers::hasRequiredFields(input, {"source", "destination"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+    const auto missingRequiredField = helpers::missingRequiredField(input, {"source", "destination"});
+    if(missingRequiredField) {
+        output["error"] = errors::makeMissingArgErrorPayload(missingRequiredField.value());
         return output;
     }
     string source = input["source"].get<string>();
@@ -646,8 +668,9 @@ json copy(const json &input) {
 
 json move(const json &input) {
     json output;
-    if(!helpers::hasRequiredFields(input, {"source", "destination"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+    const auto missingRequiredField = helpers::missingRequiredField(input, {"source", "destination"});
+    if(missingRequiredField) {
+        output["error"] = errors::makeMissingArgErrorPayload(missingRequiredField.value());
         return output;
     }
     string source = input["source"].get<string>();
@@ -669,7 +692,7 @@ json move(const json &input) {
 json getStats(const json &input) {
     json output;
     if(!helpers::hasRequiredFields(input, {"path"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+        output["error"] = errors::makeMissingArgErrorPayload("path");
         return output;
     }
     string path = input["path"].get<string>();
@@ -693,7 +716,7 @@ json getStats(const json &input) {
 json createWatcher(const json &input) {
     json output;
     if(!helpers::hasRequiredFields(input, {"path"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+        output["error"] = errors::makeMissingArgErrorPayload("path");
         return output;
     }
     string path = input["path"].get<string>();
@@ -713,7 +736,7 @@ json createWatcher(const json &input) {
 json removeWatcher(const json &input) {
     json output;
     if(!helpers::hasRequiredFields(input, {"id"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+        output["error"] = errors::makeMissingArgErrorPayload("id");
         return output;
     }
     long watcherId = input["id"].get<long>();
@@ -743,12 +766,12 @@ json getWatchers(const json &input) {
 json getAbsolutePath(const json &input) {
     json output;
     if(!helpers::hasRequiredFields(input, {"path"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+        output["error"] = errors::makeMissingArgErrorPayload("path");
         return output;
     }
     string path = input["path"].get<string>();
-    string absPath = FS_CONVWSTR(filesystem::absolute(path));
-    output["returnValue"] = helpers::normalizePath(absPath);
+    string absPath = FS_CONVWSTRN(filesystem::absolute(path));
+    output["returnValue"] = absPath;
     output["success"] = true;
     return output;
 }
@@ -756,7 +779,7 @@ json getAbsolutePath(const json &input) {
 json getRelativePath(const json &input) {
     json output;
     if(!helpers::hasRequiredFields(input, {"path"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+        output["error"] = errors::makeMissingArgErrorPayload("path");
         return output;
     }
     string path = input["path"].get<string>();
@@ -766,8 +789,8 @@ json getRelativePath(const json &input) {
         base = input["base"].get<string>();
     }
     
-    string relPath = FS_CONVWSTR(filesystem::relative(CONVSTR(path), CONVSTR(base)));
-    output["returnValue"] = helpers::normalizePath(relPath);
+    string relPath = FS_CONVWSTRN(filesystem::relative(CONVSTR(path), CONVSTR(base)));
+    output["returnValue"] = relPath;
     output["success"] = true;
     return output;
 }
@@ -775,21 +798,161 @@ json getRelativePath(const json &input) {
 json getPathParts(const json &input) {
     json output;
     if(!helpers::hasRequiredFields(input, {"path"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+        output["error"] = errors::makeMissingArgErrorPayload("path");
         return output;
     }
-    auto path = filesystem::path(input["path"].get<string>());
+    string path = input["path"].get<string>();
+    auto pathObj = filesystem::path(CONVSTR(path));
+    
     json pathParts = {
-        {"rootName", FS_CONVWSTRN(path.root_name())},
-        {"rootDirectory", FS_CONVWSTRN(path.root_directory())},
-        {"rootPath", FS_CONVWSTRN(path.root_path())},
-        {"relativePath", FS_CONVWSTRN(path.relative_path())},
-        {"parentPath", FS_CONVWSTRN(path.parent_path())},
-        {"filename", path.filename()},
-        {"stem", path.stem()},
-        {"extension", path.extension()}
+        {"rootName", FS_CONVWSTRN(pathObj.root_name())},
+        {"rootDirectory", FS_CONVWSTRN(pathObj.root_directory())},
+        {"rootPath", FS_CONVWSTRN(pathObj.root_path())},
+        {"relativePath", FS_CONVWSTRN(pathObj.relative_path())},
+        {"parentPath", FS_CONVWSTRN(pathObj.parent_path())},
+        {"filename", pathObj.filename()},
+        {"stem", pathObj.stem()},
+        {"extension", pathObj.extension()}
     };
     output["returnValue"] = pathParts;
+    output["success"] = true;
+    return output;
+}
+
+json getPermissions(const json &input) {
+    json output;
+    if(!helpers::hasRequiredFields(input, {"path"})) {
+        output["error"] = errors::makeMissingArgErrorPayload("path");
+        return output;
+    }
+    string path = input["path"].get<string>();
+    
+    fs::FileStats fileStats = fs::getStats(path);
+    if(fileStats.status != errors::NE_ST_OK) {
+        output["error"] = errors::makeErrorPayload(fileStats.status, path);
+        return output;
+    }
+    auto perms = filesystem::status(CONVSTR(path)).permissions();
+    
+    json permissions = {
+        {"all", filesystem::perms::all == (perms & filesystem::perms::all)},
+        {"ownerAll", filesystem::perms::owner_all == (perms & filesystem::perms::owner_all)},
+        {"ownerRead", filesystem::perms::none != (perms & filesystem::perms::owner_read)},
+        {"ownerWrite", filesystem::perms::none != (perms & filesystem::perms::owner_write)},
+        {"ownerExec", filesystem::perms::none != (perms & filesystem::perms::owner_exec)},
+        {"groupAll", filesystem::perms::group_all == (perms & filesystem::perms::group_all)},
+        {"groupRead", filesystem::perms::none != (perms & filesystem::perms::group_read)},
+        {"groupWrite", filesystem::perms::none != (perms & filesystem::perms::group_write)},
+        {"groupExec", filesystem::perms::none != (perms & filesystem::perms::group_exec)},
+        {"othersAll", filesystem::perms::others_all == (perms & filesystem::perms::others_all)},
+        {"othersRead", filesystem::perms::none != (perms & filesystem::perms::others_read)},
+        {"othersWrite", filesystem::perms::none != (perms & filesystem::perms::others_write)},
+        {"othersExec", filesystem::perms::none != (perms & filesystem::perms::others_exec)}
+    };
+    
+    output["returnValue"] = permissions;
+    output["success"] = true;
+    return output;
+}
+
+json setPermissions(const json &input) {
+    json output;
+    if(!helpers::hasRequiredFields(input, {"path"})) {
+        output["error"] = errors::makeMissingArgErrorPayload("path");
+        return output;
+    }
+    string path = input["path"].get<string>();
+    
+    error_code ec;
+    filesystem::perms permissions = filesystem::perms::none;
+    filesystem::perm_options permMode = filesystem::perm_options::replace;
+
+    if(helpers::hasField(input, "all") && input["all"].get<bool>())
+        permissions |= filesystem::perms::all;
+    if(helpers::hasField(input, "ownerAll") && input["ownerAll"].get<bool>())
+        permissions |= filesystem::perms::owner_all;
+    if(helpers::hasField(input, "groupAll") && input["groupAll"].get<bool>())
+        permissions |= filesystem::perms::group_all;
+    if(helpers::hasField(input, "othersAll") && input["othersAll"].get<bool>())
+        permissions |= filesystem::perms::others_all;
+    if(helpers::hasField(input, "ownerRead") && input["ownerRead"].get<bool>())
+        permissions |= filesystem::perms::owner_read;
+    if(helpers::hasField(input, "ownerWrite") && input["ownerWrite"].get<bool>())
+        permissions |= filesystem::perms::owner_write;
+    if(helpers::hasField(input, "ownerExec") && input["ownerExec"].get<bool>())
+        permissions |= filesystem::perms::owner_exec;
+    if(helpers::hasField(input, "groupRead") && input["groupRead"].get<bool>())
+        permissions |= filesystem::perms::group_read;
+    if(helpers::hasField(input, "groupWrite") && input["groupWrite"].get<bool>())
+        permissions |= filesystem::perms::group_write;
+    if(helpers::hasField(input, "groupExec") && input["groupExec"].get<bool>())
+        permissions |= filesystem::perms::group_exec;
+    if(helpers::hasField(input, "othersRead") && input["othersRead"].get<bool>())
+        permissions |= filesystem::perms::others_read;
+    if(helpers::hasField(input, "othersWrite") && input["othersWrite"].get<bool>())
+        permissions |= filesystem::perms::others_write;
+    if(helpers::hasField(input, "othersExec") && input["othersExec"].get<bool>())
+        permissions |= filesystem::perms::others_exec;
+
+    if(helpers::hasField(input, "mode")) {
+        string mode = input["mode"].get<string>();
+        if(mode == "ADD") permMode = filesystem::perm_options::add;
+        if(mode == "REPLACE") permMode = filesystem::perm_options::replace;
+        if(mode == "REMOVE") permMode = filesystem::perm_options::remove;
+    }
+    
+    filesystem::permissions(CONVSTR(path), permissions, permMode, ec);
+
+    if(!ec) { 
+        output["returnValue"] = permissions;
+        output["success"] = true;
+    }
+    else {
+        output["error"] = errors::makeErrorPayload(errors::NE_FS_UNLSTPR, path);
+    }
+    return output;
+}
+
+json getJoinedPath(const json &input) {
+    json output;
+    if(!helpers::hasRequiredFields(input, {"paths"})) {
+        output["error"] = errors::makeMissingArgErrorPayload("paths");
+        return output;
+    }
+    vector<string> paths = input["paths"].get<vector<string>>();
+    filesystem::path joinedPath = "";
+
+    for(const string &path: paths) {
+        joinedPath /= filesystem::path(CONVSTR(path));
+    }
+    
+    output["returnValue"] = FS_CONVWSTRN(filesystem::weakly_canonical(joinedPath));
+    output["success"] = true;
+    return output;
+}
+
+json getNormalizedPath(const json &input) {
+    json output;
+    if(!helpers::hasRequiredFields(input, {"path"})) {
+        output["error"] = errors::makeMissingArgErrorPayload("path");
+        return output;
+    }
+    string path = input["path"].get<string>();
+    
+    output["returnValue"] = helpers::normalizePath(path);
+    output["success"] = true;
+    return output;
+}
+
+json getUnnormalizedPath(const json &input) {
+    json output;
+    if(!helpers::hasRequiredFields(input, {"path"})) {
+        output["error"] = errors::makeMissingArgErrorPayload("path");
+        return output;
+    }
+    string path = input["path"].get<string>();
+    
+    output["returnValue"] = helpers::unNormalizePath(path);
     output["success"] = true;
     return output;
 }

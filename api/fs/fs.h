@@ -66,6 +66,7 @@ long createWatcher(const string &path);
 bool removeWatcher(long watcherId);
 fs::FileStats getStats(const string &path);
 fs::DirReaderResult readDirectory(const string &path, bool recursive = false);
+string applyPathConstants(const string &path);
 
 namespace controllers {
 
@@ -90,6 +91,11 @@ json getWatchers(const json &input);
 json getAbsolutePath(const json &input);
 json getRelativePath(const json &input);
 json getPathParts(const json &input);
+json getPermissions(const json &input);
+json setPermissions(const json &input);
+json getJoinedPath(const json &input);
+json getNormalizedPath(const json &input);
+json getUnnormalizedPath(const json &input);
 
 } // namespace controllers
 

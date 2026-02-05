@@ -12,6 +12,7 @@
 #include <cstring>
 #include <vector>
 #include <filesystem>
+#include <functional>
 #include <atomic>
 #include <climits>
 
@@ -87,45 +88,60 @@ void cleanupTray() {
 
 void open(const string &url) {
     #if defined(__linux__) || defined(__FreeBSD__)
-    os::execCommand("xdg-open \"" + url + "\"", "", true);
+    os::ChildProcessOptions processOptions;
+    processOptions.background = true;
+    os::execCommand("xdg-open \"" + url + "\"", processOptions);
     #elif defined(__APPLE__)
-    os::execCommand("open \"" + url + "\"", "", true);
+    os::ChildProcessOptions processOptions;
+    processOptions.background = true;
+    os::execCommand("open \"" + url + "\"", processOptions);
     #elif defined(_WIN32)
     ShellExecute(0, 0, helpers::str2wstr(url).c_str(), 0, 0, SW_SHOW );
     #endif
 }
 
-os::CommandResult execCommand(string command, const string &input, bool background, const string &cwd) {
+os::CommandResult execCommand(string command, const os::ChildProcessOptions &options) {
     #if defined(_WIN32)
     command = "cmd.exe /c \"" + command + "\"";
     #endif
 
     os::CommandResult commandResult;
     TinyProcessLib::Process *childProcess;
+    TinyProcessLib::Process::environment_type processEnv;
 
-    if(!background)
-        childProcess = new TinyProcessLib::Process(
-            CONVSTR(command), CONVSTR(cwd),
-            [&](const char *bytes, size_t n) {
-                commandResult.stdOut += string(bytes, n);
-            },
-            [&](const char *bytes, size_t n) {
-                commandResult.stdErr += string(bytes, n);
-            }, !input.empty()
-        );
-    else {
-        childProcess = new TinyProcessLib::Process(CONVSTR(command), CONVSTR(cwd),
-                                nullptr, nullptr, !input.empty());
+    for(const auto& [key, value]: options.envs) {
+        processEnv[CONVSTR(key)] = CONVSTR(value);
     }
 
+    auto stdOutHandler = [&](const char *bytes, size_t n) {
+        commandResult.stdOut += string(bytes, n);
+    };
+
+    auto stdErrHandler = [&](const char *bytes, size_t n) {
+        commandResult.stdErr += string(bytes, n);
+    };
+
+    if(!options.background && options.envs.empty()) { 
+        childProcess = new TinyProcessLib::Process(CONVSTR(command), CONVSTR(options.cwd), stdOutHandler, stdErrHandler, !options.stdIn.empty());
+    }
+    else if(options.background && options.envs.empty()) {
+        childProcess = new TinyProcessLib::Process(CONVSTR(command), CONVSTR(options.cwd), nullptr, nullptr, !options.stdIn.empty());
+    }
+    else if(!options.background && !options.envs.empty()) {
+        childProcess = new TinyProcessLib::Process(CONVSTR(command), CONVSTR(options.cwd), processEnv, stdOutHandler, stdErrHandler, !options.stdIn.empty());
+    }
+    else {
+        childProcess = new TinyProcessLib::Process(CONVSTR(command), CONVSTR(options.cwd), processEnv, nullptr, nullptr, !options.stdIn.empty());
+    }
+    
     commandResult.pid = childProcess->get_id();
 
-    if(!input.empty()) {
-        childProcess->write(input);
+    if(!options.stdIn.empty()) {
+        childProcess->write(options.stdIn);
         childProcess->close_stdin();
     }
 
-    if(!background) {
+    if(!options.background) {
         commandResult.exitCode = childProcess->get_exit_status(); // sync wait
     }
 
@@ -133,7 +149,7 @@ os::CommandResult execCommand(string command, const string &input, bool backgrou
     return commandResult;
 }
 
-pair<int, int> spawnProcess(string command, const string &cwd) {
+pair<int, int> spawnProcess(string command, const os::ChildProcessOptions &options) {
     #if defined(_WIN32)
     command = "cmd.exe /c \"" + command + "\"";
     #endif
@@ -142,25 +158,49 @@ pair<int, int> spawnProcess(string command, const string &cwd) {
     lock_guard<mutex> guard(spawnedProcessesLock);
 
     int virtualPid = nextVirtualPid++;
-    if (virtualPid == INT_MAX) {
+    if(virtualPid == INT_MAX) {
         nextVirtualPid = 0;
     }
 
-    childProcess = new TinyProcessLib::Process(
-        CONVSTR(command), CONVSTR(cwd),
-        [=](const char *bytes, size_t n) {
+
+    auto stdOutHandler = [=](const char *bytes, size_t n) {
+        if(options.events) {
             __dispatchSpawnedProcessEvt(virtualPid, "stdOut", string(bytes, n));
-        },
-        [=](const char *bytes, size_t n) {
+        }
+        if(options.stdOutHandler != nullptr) {
+            options.stdOutHandler(bytes, n);
+        }
+    };
+
+    auto stdErrHandler = [=](const char *bytes, size_t n) {
+        if(options.events) {
             __dispatchSpawnedProcessEvt(virtualPid, "stdErr", string(bytes, n));
-        }, true
-    );
+        }
+        if(options.stdErrHandler != nullptr) {
+            options.stdErrHandler(bytes, n);
+        }
+    };
+
+    if(options.envs.empty()) {
+        childProcess = new TinyProcessLib::Process(CONVSTR(command), CONVSTR(options.cwd), stdOutHandler, stdErrHandler, true);
+    }
+    else {
+        TinyProcessLib::Process::environment_type processEnv;
+        for(const auto& [key, value]: options.envs) {
+            processEnv[CONVSTR(key)] = CONVSTR(value);
+        }
+        childProcess = new TinyProcessLib::Process(CONVSTR(command), CONVSTR(options.cwd), processEnv, stdOutHandler, stdErrHandler, true);
+    }
 
     spawnedProcesses[virtualPid] = childProcess;
 
     thread processThread([=](){
         int exitCode = childProcess->get_exit_status(); // sync wait
-        __dispatchSpawnedProcessEvt(virtualPid, "exit", exitCode);
+        
+        if(options.events) {
+            __dispatchSpawnedProcessEvt(virtualPid, "exit", exitCode);
+        }
+        
         lock_guard<mutex> guard(spawnedProcessesLock);
         spawnedProcesses.erase(virtualPid);
         delete childProcess;
@@ -238,9 +278,13 @@ vector<string> __extensionsToVector(const json &filters) {
     vector<string> filtersV = {};
     for (auto &filter: filters) {
         filtersV.push_back(filter["name"].get<string>());
+		const auto &exts = filter["extensions"];
         string extensions = "";
-        for (auto &extension: filter["extensions"]) {
-            extensions += "*." + extension.get<string>() + " ";
+        for (int i = 0; i < exts.size(); i++) {
+            extensions += "*." + exts[i].get<string>();
+			if (i + 1 < exts.size()) {
+				extensions += " ";
+			}
         }
         filtersV.push_back(extensions);
     }
@@ -250,23 +294,29 @@ vector<string> __extensionsToVector(const json &filters) {
 json execCommand(const json &input) {
     json output;
     if(!helpers::hasRequiredFields(input, {"command"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+        output["error"] = errors::makeMissingArgErrorPayload("command");
         return output;
     }
     string command = input["command"].get<string>();
-    bool background = false;
-    string stdIn = "";
-    string cwd = "";
+    os::ChildProcessOptions processOptions;
+
     if(helpers::hasField(input, "stdIn")) {
-        stdIn = input["stdIn"].get<string>();
+        processOptions.stdIn = input["stdIn"].get<string>();
     }
     if(helpers::hasField(input, "background")) {
-        background = input["background"].get<bool>();
+        processOptions.background = input["background"].get<bool>();
     }
     if(helpers::hasField(input, "cwd")) {
-        cwd = input["cwd"].get<string>();
+        processOptions.cwd = input["cwd"].get<string>();
     }
-    os::CommandResult commandResult = os::execCommand(command, stdIn, background, cwd);
+
+    if(helpers::hasField(input, "envs")) {
+        for(auto &[key, value]: input["envs"].items()) {
+            processOptions.envs[key] = value.get<string>();
+        }
+    }
+
+    os::CommandResult commandResult = os::execCommand(command, processOptions);
 
     json retVal;
     retVal["pid"] = commandResult.pid;
@@ -283,16 +333,24 @@ json execCommand(const json &input) {
 json spawnProcess(const json &input) {
     json output;
     if(!helpers::hasRequiredFields(input, {"command"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+        output["error"] = errors::makeMissingArgErrorPayload("command");
         return output;
     }
+    
     string command = input["command"].get<string>();
-    string cwd = "";
+    os::ChildProcessOptions processOptions;
+    
     if(helpers::hasField(input, "cwd")) {
-        cwd = input["cwd"].get<string>();
+        processOptions.cwd = input["cwd"].get<string>();
     }
 
-    auto spawnedData = os::spawnProcess(command, cwd);
+    if(helpers::hasField(input, "envs")) {
+        for(auto &[key, value]: input["envs"].items()) {
+            processOptions.envs[key] = value.get<string>();
+        }
+    }
+
+    auto spawnedData = os::spawnProcess(command, processOptions);
 
     json process;
     process["id"] = spawnedData.first;
@@ -304,8 +362,9 @@ json spawnProcess(const json &input) {
 
 json updateSpawnedProcess(const json &input) {
     json output;
-    if(!helpers::hasRequiredFields(input, {"id", "event"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+    const auto missingRequiredField = helpers::missingRequiredField(input, {"id", "event"});
+    if(missingRequiredField) {
+        output["error"] = errors::makeMissingArgErrorPayload(missingRequiredField.value());
         return output;
     }
 
@@ -346,7 +405,7 @@ json getSpawnedProcesses(const json &input) {
 json getEnv(const json &input) {
     json output;
     if(!helpers::hasRequiredFields(input, {"key"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+        output["error"] = errors::makeMissingArgErrorPayload("key");
         return output;
     }
     string key = input["key"].get<string>();
@@ -481,8 +540,9 @@ json showSaveDialog(const json &input) {
 
 json showNotification(const json &input) {
     json output;
-    if(!helpers::hasRequiredFields(input, {"title", "content"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+    const auto missingRequiredField = helpers::missingRequiredField(input, {"title", "content"});
+    if(missingRequiredField) {
+        output["error"] = errors::makeMissingArgErrorPayload(missingRequiredField.value());
         return output;
     }
     string title = input["title"].get<string>();
@@ -512,8 +572,9 @@ json showNotification(const json &input) {
 
 json showMessageBox(const json &input) {
     json output;
-    if(!helpers::hasRequiredFields(input, {"title", "content"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+    const auto missingRequiredField = helpers::missingRequiredField(input, {"title", "content"});
+    if(missingRequiredField) {
+        output["error"] = errors::makeMissingArgErrorPayload(missingRequiredField.value());
         return output;
     }
     string icon = "INFO";
@@ -631,8 +692,7 @@ json setTray(const json &input) {
                     useOtherTempTrayIcon ?  "/.tmp/tray_icon_linux_01.png" : "/.tmp/tray_icon_linux_02.png"
             );
 
-            string tempDirPath = settings::joinAppDataPath("/.tmp");
-            filesystem::create_directories(tempDirPath);
+            string tempDirPath = settings::joinAppDataPath("/.tmp");;
             resources::extractFile(iconPath, tempIconPath);
             fullIconPath = filesystem::absolute(tempIconPath);
         }
@@ -684,7 +744,7 @@ json setTray(const json &input) {
 json open(const json &input) {
     json output;
     if(!helpers::hasRequiredFields(input, {"url"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+        output["error"] = errors::makeMissingArgErrorPayload("url");
         return output;
     }
     string url = input["url"].get<string>();
@@ -696,7 +756,7 @@ json open(const json &input) {
 json getPath(const json &input) {
     json output;
     if(!helpers::hasRequiredFields(input, {"name"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+        output["error"] = errors::makeMissingArgErrorPayload("name");
         return output;
     }
     string name = input["name"].get<string>();

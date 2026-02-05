@@ -17,6 +17,7 @@ string __getStatusCodeString(const errors::StatusCode code) {
         case errors::NE_ST_INVSTKY: return "NE_ST_INVSTKY";
         case errors::NE_ST_NOSTKEX: return "NE_ST_NOSTKEX";
         case errors::NE_ST_STKEYWE: return "NE_ST_STKEYWE";
+        case errors::NE_ST_STKEYRE: return "NE_ST_STKEYRE";
         case errors::NE_ST_NOSTDIR: return "NE_ST_NOSTDIR";
         // os
         case errors::NE_OS_UNLTOUP: return "NE_OS_UNLTOUP";
@@ -40,6 +41,7 @@ string __getStatusCodeString(const errors::StatusCode code) {
         case errors::NE_FS_UNLTFOP: return "NE_FS_UNLTFOP";
         case errors::NE_FS_UNLCWAT: return "NE_FS_UNLCWAT";
         case errors::NE_FS_NOWATID: return "NE_FS_NOWATID";
+        case errors::NE_FS_UNLSTPR: return "NE_FS_UNLSTPR";
         // window
         case errors::NE_WI_UNBSWSR: return "NE_WI_UNBSWSR";
         // router
@@ -51,8 +53,9 @@ string __getStatusCodeString(const errors::StatusCode code) {
         // resources
         case errors::NE_RS_TREEGER: return "NE_RS_TREEGER";
         case errors::NE_RS_UNBLDRE: return "NE_RS_UNBLDRE";
-        case errors::NE_RS_APIRQRF: return "NE_RS_APIRQRF";
-        case errors::NE_RS_FILNOTF: return "NE_RS_FILNOTF";
+        case errors::NE_RS_NOPATHE: return "NE_RS_NOPATHE";
+        case errors::NE_RS_FILEXTF: return "NE_RS_FILEXTF";
+        case errors::NE_RS_DIREXTF: return "NE_RS_DIREXTF";
         // server
         case errors::NE_SR_UNBSEND: return "NE_SR_UNBSEND";
         case errors::NE_SR_UNBPARS: return "NE_SR_UNBPARS";
@@ -75,6 +78,7 @@ string __findStatusCodeDesc(errors::StatusCode code) {
         case errors::NE_ST_INVSTKY: return "Invalid storage key format. The key should match regex: %1";
         case errors::NE_ST_NOSTKEX: return "Unable to find storage key: %1";
         case errors::NE_ST_STKEYWE: return "Unable to write data to key: %1";
+        case errors::NE_ST_STKEYRE: return "Unable to remove storage key: %1";
         case errors::NE_ST_NOSTDIR: return "Unable to read storage directory: %1";
         // os
         case errors::NE_OS_UNLTOUP: return "Unable to update process id: %1";
@@ -98,19 +102,21 @@ string __findStatusCodeDesc(errors::StatusCode code) {
         case errors::NE_FS_UNLTFOP: return "Unable to find opened file id: %1";
         case errors::NE_FS_UNLCWAT: return "Unable to create watcher for path: %1";
         case errors::NE_FS_NOWATID: return "Unable to find watcher: %1";
+        case errors::NE_FS_UNLSTPR: return "Unable to set file permissions for %1";
         // window
         case errors::NE_WI_UNBSWSR: return "Unable to save window screenshot to %1";
         // router
         case errors::NE_RT_INVTOKN: return "Invalid or expired NL_TOKEN value from client";
         case errors::NE_RT_APIPRME: return "Missing permission to access Native API";
         case errors::NE_RT_NATPRME: return "Missing permission to execute the native method: %1";
-        case errors::NE_RT_NATRTER: return "Native method execution error occurred. Make sure that you've provided required parameters properly.";
+        case errors::NE_RT_NATRTER: return "Native method execution error occurred. Required parameter is missing: %1";
         case errors::NE_RT_NATNTIM: return "%1 is not implemented in the Neutralinojs server";
         // resources
         case errors::NE_RS_TREEGER: return "Resource file tree generation error. %1 is missing.";
         case errors::NE_RS_UNBLDRE: return "Unable to load application resource file %1";
-        case errors::NE_RS_APIRQRF: return "Resource API works only when the resource file is loaded";
-        case errors::NE_RS_FILNOTF: return "The request file (%1) is not found in the resource bundle";
+        case errors::NE_RS_NOPATHE: return "Path (%1) doesn't exist in resources";
+        case errors::NE_RS_FILEXTF: return "Unable to extract the requested file to %1";
+        case errors::NE_RS_DIREXTF: return "Unable to extract the requested directory to %1";
         // server
         case errors::NE_SR_UNBSEND: return "Unable to send native message";
         case errors::NE_SR_UNBPARS: return "Unable to parse native call payload";
@@ -130,8 +136,8 @@ string __getStatusCodeDesc(errors::StatusCode code, string param = "") {
     return regex_replace(msg, regex("%1"), param);
 }
 
-json makeMissingArgErrorPayload() {
-    return errors::makeErrorPayload(errors::NE_RT_NATRTER);
+json makeMissingArgErrorPayload(const string& missingArg) {
+    return errors::makeErrorPayload(errors::NE_RT_NATRTER, missingArg);
 }
 
 json makeErrorPayload(const errors::StatusCode code, const string &param) {

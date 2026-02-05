@@ -67,12 +67,16 @@ map<string, router::NativeMethod> methodMap = {
     {"window.focus", window::controllers::focus},
     {"window.setIcon", window::controllers::setIcon},
     {"window.move", window::controllers::move},
+    {"window.beginDrag", window::controllers::beginDrag},
     {"window.center", window::controllers::center},
     {"window.setSize", window::controllers::setSize},
     {"window.getSize", window::controllers::getSize},
     {"window.getPosition", window::controllers::getPosition},
     {"window.setAlwaysOnTop", window::controllers::setAlwaysOnTop},
+    {"window.setBorderless", window::controllers::setBorderless},
     {"window.snapshot", window::controllers::snapshot},
+    {"window.setMainMenu", window::controllers::setMainMenu},
+    {"window.print", window::controllers::print},
     // Neutralino.computer
     {"computer.getMemoryInfo", computer::controllers::getMemoryInfo},
     {"computer.getArch", computer::controllers::getArch},
@@ -81,7 +85,7 @@ map<string, router::NativeMethod> methodMap = {
     {"computer.getCPUInfo", computer::controllers::getCPUInfo},
     {"computer.getDisplays", computer::controllers::getDisplays},
     {"computer.getMousePosition", computer::controllers::getMousePosition},
-    // Neutralino.log
+    // Neutralino.debug
     {"debug.log", debug::controllers::log},
     // Neutralino.filesystem
     {"filesystem.createDirectory", fs::controllers::createDirectory},
@@ -105,6 +109,11 @@ map<string, router::NativeMethod> methodMap = {
     {"filesystem.getAbsolutePath", fs::controllers::getAbsolutePath},
     {"filesystem.getRelativePath", fs::controllers::getRelativePath},
     {"filesystem.getPathParts", fs::controllers::getPathParts},
+    {"filesystem.getPermissions", fs::controllers::getPermissions},
+    {"filesystem.setPermissions", fs::controllers::setPermissions},
+    {"filesystem.getJoinedPath", fs::controllers::getJoinedPath},
+    {"filesystem.getNormalizedPath", fs::controllers::getNormalizedPath},
+    {"filesystem.getUnnormalizedPath", fs::controllers::getUnnormalizedPath},
     // Neutralino.os
     {"os.execCommand", os::controllers::execCommand},
     {"os.spawnProcess", os::controllers::spawnProcess},
@@ -123,7 +132,9 @@ map<string, router::NativeMethod> methodMap = {
     // Neutralino.storage
     {"storage.setData", storage::controllers::setData},
     {"storage.getData", storage::controllers::getData},
+    {"storage.removeData", storage::controllers::removeData},
     {"storage.getKeys", storage::controllers::getKeys},
+    {"storage.clear", storage::controllers::clear},
     // Neutralino.events
     {"events.broadcast", events::controllers::broadcast},
     // Neutralino.extensions
@@ -135,11 +146,15 @@ map<string, router::NativeMethod> methodMap = {
     {"clipboard.readText", clipboard::controllers::readText},
     {"clipboard.readImage", clipboard::controllers::readImage},
     {"clipboard.writeText", clipboard::controllers::writeText},
+    {"clipboard.writeHTML", clipboard::controllers::writeHTML},
+    {"clipboard.readHTML", clipboard::controllers::readHTML},
     {"clipboard.writeImage", clipboard::controllers::writeImage},
     {"clipboard.clear", clipboard::controllers::clear},
     // Neutralino.resources
     {"resources.getFiles", res::controllers::getFiles},
+    {"resources.getStats", res::controllers::getStats},
     {"resources.extractFile", res::controllers::extractFile},
+    {"resources.extractDirectory", res::controllers::extractDirectory},
     {"resources.readFile", res::controllers::readFile},
     {"resources.readBinaryFile", res::controllers::readBinaryFile},
     // Neutralino.server
@@ -226,16 +241,19 @@ errors::StatusCode mountPath(string &path, string &target) {
     if(path.empty()) {
         path = "/";
     }
-    if(!filesystem::exists(target)) {
+
+    const auto targetPath = filesystem::path(CONVSTR(target));
+    
+    if(!filesystem::exists(targetPath)) {
         return errors::NE_FS_NOPATHE;
     }
-    if(!filesystem::is_directory(target)) {
+    if(!filesystem::is_directory(targetPath)) {
         return errors::NE_FS_NOTADIR;
     }
     if(router::isMounted(path)) {
         return errors::NE_SR_MPINUSE;
     }
-    
+
     mountedPaths[path] = target;
     return errors::NE_ST_OK;
 }
