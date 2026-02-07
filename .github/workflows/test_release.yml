@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-linux:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     
     strategy:
       matrix:
@@ -38,7 +38,7 @@ jobs:
       id: build-package
       with:
         arch: ${{ matrix.arch == 'arm64' && 'aarch64' || 'armv7' }}
-        distro: ubuntu20.04
+        distro: ubuntu22.04
         install: |
           apt-get update
           apt-get install -y -f \
