@@ -131,7 +131,7 @@ jobs:
     - name: Create Release Notes
       run: |
         chmod +x ./scripts/rz.py
-        echo "./scripts/rz.py create ${{github.event.inputs.version}}"
+        ./scripts/rz.py create ${{github.event.inputs.version}}
                
     - name: Commit and Push Changelog
       uses: EndBug/add-and-commit@v9.1.3

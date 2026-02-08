@@ -10,6 +10,7 @@ rename `Unreleased` topic with the new version tag. Finally, create a new `Unrel
 
 ### Core: events
 - New window events: `windowMinimize`, `windowRestore`, `windowMaximize`, `windowFullScreenEnter`, and `windowFullScreenExit`
+- New line for test release
 
 ### API: window
 - Add `window.setBorderless(bool)` to toggle borderless mode while the Neutralinojs app is running.
