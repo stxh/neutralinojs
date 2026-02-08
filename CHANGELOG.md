@@ -8,6 +8,8 @@ rename `Unreleased` topic with the new version tag. Finally, create a new `Unrel
 
 ## v--no-changes
 
+## v--no-changes
+
 ## v6.5.0
 
 ### Core: events
